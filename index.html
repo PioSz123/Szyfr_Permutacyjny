@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Szyfr permutacyjny</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font: 16px/1.5 system-ui, sans-serif;
+      color: #182a26;
+      background: #e0f7f4;
+    }
+
+    * { box-sizing: border-box; }
+
+    main {
+      width: min(52rem, calc(100% - 2rem));
+      margin: clamp(1.5rem, 7vh, 5rem) auto;
+    }
+
+    header { margin-bottom: 1.5rem; }
+
+    h1 {
+      margin: 0 0 .35rem;
+      font-size: clamp(2rem, 6vw, 3.15rem);
+      line-height: 1.1;
+      letter-spacing: -.045em;
+    }
+
+    header p { margin: 0; color: #40594f; }
+
+    code {
+      padding: .2rem .4rem;
+      border-radius: .3rem;
+      background: #dceae1;
+      white-space: nowrap;
+    }
+
+    form {
+      background: #fff;
+      padding: clamp(1rem, 4vw, 2rem);
+      border: 1px solid #ccdcd2;
+      border-radius: 1rem;
+      box-shadow: 0 .6rem 2rem #193b2912;
+    }
+
+    .editors {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .field { margin-bottom: 1rem; }
+
+    label {
+      display: block;
+      margin-bottom: .35rem;
+      font-weight: 650;
+    }
+
+    select, textarea, button {
+      font: inherit;
+      border: 1px solid #9ab0a4;
+      border-radius: .5rem;
+      color: inherit;
+    }
+
+    select, textarea {
+      width: 100%;
+      background: #fff;
+      padding: .65rem .75rem;
+    }
+
+    textarea {
+      display: block;
+      min-height: 10rem;
+      resize: vertical;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    textarea[readonly] { background: #f2f7f3; }
+
+    [aria-invalid="true"] { border-color: #ac201c; }
+
+    :focus-visible {
+      outline: 3px solid #187356;
+      outline-offset: 2px;
+    }
+
+    button {
+      background: #15573f;
+      border-color: #15573f;
+      color: white;
+      padding: .65rem 1.15rem;
+      font-weight: 650;
+      cursor: pointer;
+    }
+
+    button:hover { background: #104634; }
+
+    .error {
+      color: #982421;
+      margin: .4rem 0 0;
+      font-size: .9rem;
+    }
+
+    #status {
+      color: #40594f;
+      margin: .65rem 0 0;
+    }
+
+    #status:empty { margin: 0; }
+
+    @media (max-width: 38rem) {
+      .editors { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Szyfr permutacyjny</h1>
+      <p>Blok ma 6 znaków. Stała permutacja pozycji to <code>3 6 1 5 2 4</code>.</p>
+    </header>
+
+    <form id="cipher-form" novalidate>
+      <div class="field">
+        <label for="operation">Operacja</label>
+        <select id="operation">
+          <option value="encrypt">Szyfrowanie</option>
+          <option value="decrypt">Deszyfrowanie</option>
+        </select>
+      </div>
+
+      <div class="editors">
+        <div class="field">
+          <label id="input-label" for="input-text">Tekst jawny</label>
+          <textarea id="input-text" spellcheck="false" required
+                    aria-describedby="input-hint input-error"></textarea>
+          <small id="input-hint">Minimum 8 znaków.</small>
+          <p id="input-error" class="error" role="alert" hidden></p>
+        </div>
+
+        <div class="field">
+          <label id="output-label" for="output-text">Szyfrogram</label>
+          <textarea id="output-text" spellcheck="false" readonly></textarea>
+        </div>
+      </div>
+
+      <button type="submit" id="submit-button">Zaszyfruj</button>
+      <p id="status" role="status"></p>
+    </form>
+  </main>
+
+  <script>
+    "use strict";
+
+    // Indeksy pozycji wejściowych w kolejności odczytu, liczone od zera.
+    const PERMUTATION = Object.freeze([2, 5, 0, 4, 1, 3]);
+    const BLOCK_SIZE = PERMUTATION.length;
+    const MIN_TEXT_LENGTH = 8;
+
+    function transformText(text, decrypt) {
+      // Iteracja po znakach Unicode zachowuje emotikony w całości.
+      const characters = Array.from(text);
+      const result = [];
+
+      for (let offset = 0; offset < characters.length; offset += BLOCK_SIZE) {
+        const block = characters.slice(offset, offset + BLOCK_SIZE);
+        // W krótszym bloku pomijamy pozycje wykraczające poza jego długość.
+        const positions = PERMUTATION.filter(position => position < block.length);
+
+        if (decrypt) {
+          // Każdy znak szyfrogramu wraca na pozycję, z której go odczytano.
+          const restored = new Array(block.length);
+          positions.forEach((originalPosition, encryptedPosition) => {
+            restored[originalPosition] = block[encryptedPosition];
+          });
+          result.push(restored.join(""));
+        } else {
+          result.push(positions.map(position => block[position]).join(""));
+        }
+      }
+
+      return result.join("");
+    }
+
+    const form = document.getElementById("cipher-form");
+    const operation = document.getElementById("operation");
+    const input = document.getElementById("input-text");
+    const output = document.getElementById("output-text");
+    const inputLabel = document.getElementById("input-label");
+    const outputLabel = document.getElementById("output-label");
+    const inputError = document.getElementById("input-error");
+    const button = document.getElementById("submit-button");
+    const status = document.getElementById("status");
+
+    function clearFeedback() {
+      input.removeAttribute("aria-invalid");
+      inputError.hidden = true;
+      inputError.textContent = "";
+      output.value = "";
+      status.textContent = "";
+    }
+
+    operation.addEventListener("change", () => {
+      const decrypt = operation.value === "decrypt";
+      inputLabel.textContent = decrypt ? "Szyfrogram" : "Tekst jawny";
+      outputLabel.textContent = decrypt ? "Tekst jawny" : "Szyfrogram";
+      button.textContent = decrypt ? "Odszyfruj" : "Zaszyfruj";
+      clearFeedback();
+    });
+
+    input.addEventListener("input", clearFeedback);
+
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      clearFeedback();
+
+      const decrypt = operation.value === "decrypt";
+      const text = input.value;
+      // Liczymy znaki Unicode tak samo jak przy dzieleniu tekstu na bloki.
+      if (Array.from(text).length < MIN_TEXT_LENGTH || text.trim() === "") {
+        input.setAttribute("aria-invalid", "true");
+        inputError.hidden = false;
+        inputError.textContent = `Wpisz co najmniej ${MIN_TEXT_LENGTH} znaków, w tym przynajmniej jeden znak inny niż biały.`;
+        input.focus();
+        return;
+      }
+
+      output.value = transformText(text, decrypt);
+      status.textContent = decrypt ? "Tekst odszyfrowany." : "Tekst zaszyfrowany.";
+    });
+  </script>
+</body>
+</html>
